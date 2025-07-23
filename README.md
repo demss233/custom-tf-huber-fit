@@ -8,6 +8,7 @@ Includes custom training loops, a custom **Huber loss metric**, and uses the **C
 - L2 regularization
 - Custom Huber metric implementation
 - Progress bar with `tqdm`
+- 1CycleScheduling
 
 ##  Requirements
 ```bash
