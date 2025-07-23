@@ -1,11 +1,14 @@
 import tensorflow as tf
 from tensorflow import keras
+
 from sklearn.datasets import fetch_california_housing
 from sklearn.model_selection import train_test_split
-import numpy as np
-import pandas as pd
 from sklearn.preprocessing import StandardScaler
+
+import numpy as np
 from tqdm import tqdm
+
+from cycle_schedule import CycleScheduling
 
 seed = 42
 
@@ -15,6 +18,8 @@ y = housing['target']
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.2, random_state = seed)
 
+# Standardization, centering the data with mean 0 and std 1
+# Read: https://en.wikipedia.org/wiki/Standard_score
 scaler = StandardScaler()
 scaler.fit(X_train, y_train)
 X_train_scaled = scaler.transform(X_train)
@@ -72,6 +77,7 @@ epochs = 22
 batch_size = 54
 steps = len(X_train) // batch_size
 
+scheduler = CycleScheduling(max_lr = 0.01, total_steps = steps)
 optimizer = keras.optimizers.Nadam(learning_rate = 0.01)
 loss_function = keras.losses.MeanSquaredError()
 mean_loss = keras.metrics.Mean()
@@ -82,20 +88,31 @@ for epoch in range(1, epochs + 1):
     progress_bar = tqdm(range(1, steps + 1), desc = "Training", leave = False)
     for step in progress_bar:
         X_batch, y_batch = random_batch(X_train_scaled, y_train)
+
+        lr = scheduler.get_lr()
+        lr = float(lr)
+        optimizer.learning_rate.assign(lr)
+
+        # Backpropagation
         with tf.GradientTape() as tape:
             predictions = model(X_batch, training = True)
             main_loss = tf.reduce_mean(loss_function(y_batch, predictions))
             loss = tf.add_n([main_loss] + model.losses)
+
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         mean_loss(loss)
+
         for metric in metrics:
             metric(y_batch, predictions)
+
         progress_bar.set_postfix({
+            "lr": f"{lr: .5f}",
             "loss": f"{mean_loss.result().numpy(): .4f}",
             "mean_absolute_error": f"{metrics[0].result().numpy(): .4f}",
             "huber_loss": f"{metrics[1].result().numpy(): .4f}"
         })
+        
     print_status_bar(len(y_train), len(y_train), mean_loss, metrics)
     for metric in [mean_loss] + metrics:
         metric.reset_state()
